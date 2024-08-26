@@ -4,8 +4,8 @@ python -u /content/predrnn-pytorch/run.py \
     --is_training 0 \
     --device cuda \
     --dataset_name action \
-    --train_data_paths /content/processed_128/
-    --valid_data_paths /content/processed_128/ \
+    --train_data_paths /content/processed_128 \
+    --valid_data_paths /content/processed_128 \
     --save_dir checkpoints/kth_predrnn_v2 \
     --gen_frm_dir results/kth_predrnn_v2 \
     --model_name predrnn_v2 \
