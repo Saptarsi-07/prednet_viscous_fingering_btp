@@ -1,6 +1,6 @@
 export CUDA_VISIBLE_DEVICES=0
 cd ..
-python -u run.py \
+python -u /content/predrnn-pytorch/run.py \
     --is_training 0 \
     --device cuda \
     --dataset_name action \
