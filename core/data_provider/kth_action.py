@@ -84,9 +84,10 @@ class ActionFrameInfo:
 class DataProcess:
     def __init__(self, input_param):
         self.paths = input_param['paths']  # path to parent folder containing category dirs
-        self.category_1 = ['boxing', 'handclapping', 'handwaving', 'walking']
-        self.category_2 = ['jogging', 'running']
-        self.categories = self.category_1 + self.category_2
+        # self.category_1 = ['boxing', 'handclapping', 'handwaving', 'walking']
+        self.categories = ['walking']
+        # self.category_2 = ['jogging', 'running']
+        # self.categories = self.category_1 + self.category_2
         self.image_width = input_param['image_width']
 
         # Hard coded training and test persons (prevent same person occurring in train - test set)
