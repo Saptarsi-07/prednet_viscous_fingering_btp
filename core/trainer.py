@@ -105,7 +105,6 @@ def test(model, test_input_handle, configs, itr):
             for b in range(configs.batch_size):
                 score, _ = compare_ssim(pred_frm[b], real_frm[b], full=True, multichannel=True,channel_axis=-1)
                 ssim[i] += score
-                print(score)
 
         # save prediction examples
         if batch_id <= configs.num_save_samples:
