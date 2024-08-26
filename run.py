@@ -18,7 +18,7 @@ parser.add_argument('--is_training', type=int, default=0)
 parser.add_argument('--device', type=str, default='cpu:0')
 
 # data
-parser.add_argument('--dataset_name', type=str, default='kth_action')
+parser.add_argument('--dataset_name', type=str, default='action')
 parser.add_argument('--train_data_paths', type=str, default='/content/processed_128')
 parser.add_argument('--valid_data_paths', type=str, default='/content/processed_128')
 parser.add_argument('--save_dir', type=str, default='checkpoints/kth_predrnn_v2')
