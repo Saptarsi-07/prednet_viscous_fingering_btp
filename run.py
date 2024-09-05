@@ -1,4 +1,4 @@
-__author__ = 'yunbo'
+__author__ = 'recklurker'
 
 import os
 import shutil
@@ -170,11 +170,17 @@ def schedule_sampling(eta, itr):
 def train_wrapper(model):
     if args.pretrained_model:
         model.load(args.pretrained_model)
-    # load data
-    train_input_handle, test_input_handle = datasets_factory.data_provider(
-        args.dataset_name, args.train_data_paths, args.valid_data_paths, args.batch_size, args.img_width,
-        seq_length=args.total_length, injection_action=args.injection_action, is_training=True)
 
+    """ 
+        Loading Data: Using Self Data. 
+        Modify Dataset_provider files to preprocess data and create train and test input handles. 
+    """
+    # load data
+    # train_input_handle, test_input_handle = datasets_factory.data_provider(
+    #     args.dataset_name, args.train_data_paths, args.valid_data_paths, args.batch_size, args.img_width,
+    #     seq_length=args.total_length, injection_action=args.injection_action, is_training=True)
+
+    
     eta = args.sampling_start_value
 
     for itr in range(1, args.max_iterations + 1):
@@ -217,7 +223,7 @@ os.makedirs(args.gen_frm_dir)
 
 print('Initializing models')
 
-model = Model(args)
+model = Model(args) # Generate model with arguments specified 
 
 if args.is_training:
     train_wrapper(model)

@@ -1,4 +1,4 @@
-__author__ = 'yunbo'
+__author__ = 'recklurker'
 
 import torch
 import torch.nn as nn

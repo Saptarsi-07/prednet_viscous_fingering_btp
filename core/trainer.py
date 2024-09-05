@@ -1,3 +1,6 @@
+"""
+    This file is used for training the predRNN model. 
+"""
 import os.path
 import datetime
 import cv2

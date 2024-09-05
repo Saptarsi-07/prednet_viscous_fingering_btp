@@ -1,12 +1,13 @@
-from core.data_provider import kth_action, mnist, bair
+from core.data_provider import kth_action, mnist, bair, fingering
 
 datasets_map = {
     'mnist': mnist,
     'action': kth_action,
     'bair': bair,
+    'fingering': fingering
 }
 
-
+# data_provider(fingering, paths_training, results_pat, 32, 128, 10, concat, is_training = true)
 def data_provider(dataset_name, train_data_paths, valid_data_paths, batch_size,
                   img_width, seq_length, injection_action, is_training=True):
     if dataset_name not in datasets_map:
@@ -43,7 +44,7 @@ def data_provider(dataset_name, train_data_paths, valid_data_paths, batch_size,
         input_handle = datasets_map[dataset_name].DataProcess(input_param)
         if is_training:
             train_input_handle = input_handle.get_train_input_handle()
-            train_input_handle.begin(do_shuffle=True)
+            train_input_handle.begin(do_shuffle=True) # Return 
             test_input_handle = input_handle.get_test_input_handle()
             test_input_handle.begin(do_shuffle=False)
             return train_input_handle, test_input_handle
