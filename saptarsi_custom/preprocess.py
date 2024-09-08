@@ -5,6 +5,7 @@ This file contains logic for greyscaling, rescaling to custom resolution (for ex
 """
 
 import cv2
+import os 
 import numpy as np 
 from terminal_colors import terminal_colors
 
@@ -36,7 +37,7 @@ def grayscale_frames(frames):
     for frame in frames:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-def preprocess(path_to_video, output_folder, resolution): 
+def preprocess(path_to_video, resolution): 
     '''
         preprocess(path_to_video)
         Preprocess the video available at path_to_video and writes the output at output_folder
@@ -49,11 +50,15 @@ def preprocess(path_to_video, output_folder, resolution):
     rescale_frames(frames, resolution)
     grayscale_frames(frames)
 
-    if not output_folder[-1] == "\\":
-        output_folder.append("\\")
-    count = 0
-    for frame in frames:
-        count += 1
-        path = output_folder + f"{count:04}" + ".jpg"
-        cv2.imwrite(path, frame)
+    # if not output_folder[-1] == "\\":
+    #     output_folder = output_folder + '\\'
+    # if os.path.isdir(output_folder):
+    #     os.rmdir(output_folder)
+    # os.mkdir(output_folder)
+    # count = 0
+    # for frame in frames:
+    #     count += 1
+    #     path = output_folder + f"{count:04}" + ".jpg"
+    #     cv2.imwrite(path, frame)
     return frames 
+
