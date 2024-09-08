@@ -4,7 +4,7 @@ import math
 import model as predRNNv2
 
 
-frames = preprocess.preprocess("../prednet_viscous_fingering_btp/fingering_bw_processed_128x128_30.mp4", (128, 128))
+frames = preprocess.preprocess("../fingering_bw_processed_128x128_30.mp4", (128, 128))
 
 TRAIN_TEST_SPLIT_RATIO = 0.8 
 SIZE_TRAIN_DATA = math.ceil(len(frames) * TRAIN_TEST_SPLIT_RATIO)
