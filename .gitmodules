@@ -1,0 +1,3 @@
+[submodule "predrnn-pytorch"]
+	path = predrnn-pytorch
+	url = https://github.com/thuml/predrnn-pytorch.git
