@@ -68,7 +68,7 @@ def train(model, ims, real_input_flag, itr):
 
 def train_wrapper(model):
     eta = 1.0 # Tunable 
-    BATCH_SIZE = config['batch_size']
+    BATCH_SIZE = config['total_length']
 
     for itr in range(1, config['max_iterations'] + 1):
         iter = itr % ITER_PER_BATCH
@@ -76,20 +76,23 @@ def train_wrapper(model):
             print('Train Data end. Restarting from first frame')
             eta = 1.0 
 
-        batch = train[iter*BATCH_SIZE:(itr+1)*BATCH_SIZE] # Get training batch 
-        
+        batch = train_data[iter*BATCH_SIZE:(itr+1)*BATCH_SIZE] # Get training batch 
+
+        print(batch[:,1].shape)
+        break 
+
         if config['reverse_scheduled_sampling'] == 1:
             real_input_flag = reserve_schedule_sampling_exp(iter)
         else:
             eta, real_input_flag = schedule_sampling(eta, iter)
 
-        train(model, batch, real_input_flag, iter) # train model on batch 
+        # train(model, batch, real_input_flag, iter) # train model on batch 
 
-        if iter % config['snapshot_interval'] == 0:
-            model.save(iter)
+        # if iter % config['snapshot_interval'] == 0:
+        #     model.save(iter)
 
-        if iter % config['test_interval'] == 0:
-            test(model, config, itr) # Test after some training 
+        # if iter % config['test_interval'] == 0:
+        #     test(model, config, itr) # Test after some training 
 
 
 
@@ -313,3 +316,6 @@ def test(model, configs, itr):
     print('lpips per frame: ' + str(np.mean(lp)))
     for i in range(configs['total_length'] - configs['input_length']):
         print(lp[i])
+
+
+train_wrapper(model)
