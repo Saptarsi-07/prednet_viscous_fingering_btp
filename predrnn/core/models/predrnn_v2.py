@@ -39,6 +39,7 @@ class RNN(nn.Module):
     def forward(self, frames_tensor, mask_true):
         # [batch, length, height, width, channel] -> [batch, length, channel, height, width]
         frames = frames_tensor.permute(0, 1, 4, 2, 3).contiguous()
+        print(mask_true.shape)
         mask_true = mask_true.permute(0, 1, 4, 2, 3).contiguous()
 
         batch = frames.shape[0]
