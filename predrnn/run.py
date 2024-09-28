@@ -189,7 +189,7 @@ def train_wrapper(model):
             eta, real_input_flag = schedule_sampling(eta, itr)
 
         trainer.train(model, ims, real_input_flag, args, itr)
-
+        print(f'Current Iteration: {itr}')
         if itr % args.snapshot_interval == 0:
             model.save(itr)
 
