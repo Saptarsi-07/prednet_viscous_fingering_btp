@@ -1,103 +1,146 @@
+import os.path
+import datetime
+import cv2
 import numpy as np
-import math
-import preprocess
-import datetime # For logging into the terminal 
-import warnings 
-import os 
+from skimage.metrics import structural_similarity as compare_ssim
+from core.utils import preprocess, metrics
+import lpips
+import torch
 
-# Extract and preprocess frames from the video
-frames = preprocess.preprocess("../fingering_bw_processed_128x128_30.mp4", (128, 128))
+loss_fn_alex = lpips.LPIPS(net='alex')
 
-TRAIN_TEST_SPLIT_RATIO = 0.8 # How much data used for training? 
-TRAIN_VALID_SPLIT_RATIO = 0.7 # How much training data used for validation
-SIZE_TRAIN_VALID_DATA = math.ceil(len(frames) * TRAIN_TEST_SPLIT_RATIO)
-SIZE_TRAIN_DATA = math.ceil(SIZE_TRAIN_VALID_DATA * TRAIN_VALID_SPLIT_RATIO)
 
-print(f'Splitting data into {SIZE_TRAIN_DATA} training frames, {SIZE_TRAIN_VALID_DATA - SIZE_TRAIN_DATA} validation frames, and {len(frames) - SIZE_TRAIN_VALID_DATA} test frames')
+def train(model, ims, real_input_flag, configs, itr):
+    cost = model.train(ims, real_input_flag)
+    if configs.reverse_input:
+        ims_rev = np.flip(ims, axis=1).copy()
+        cost += model.train(ims_rev, real_input_flag)
+        cost = cost / 2
 
-train_data = frames[:SIZE_TRAIN_DATA]  # Split into training, validation, and test data 
-valid_data = frames[SIZE_TRAIN_DATA:SIZE_TRAIN_VALID_DATA]
-test_data = frames[SIZE_TRAIN_VALID_DATA:]
+    if itr % configs.display_interval == 0:
+        print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'itr: ' + str(itr))
+        print('training loss: ' + str(cost))
 
-train_dict = dict()
-valid_dict = dict()
-test_dict = dict()
 
-TOTAL_LENGTH = 20
-INPUT_LENGTH = 10
+def test(model, test_input_handle, configs, itr):
+    print(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'test...')
+    test_input_handle.begin(do_shuffle=False)
+    res_path = os.path.join(configs.gen_frm_dir, str(itr))
+    os.mkdir(res_path)
+    avg_mse = 0
+    batch_id = 0
+    img_mse, ssim, psnr = [], [], []
+    lp = []
 
-LENGTH = SIZE_TRAIN_DATA//TOTAL_LENGTH
-print(LENGTH)
+    for i in range(configs.total_length - configs.input_length):
+        img_mse.append(0)
+        ssim.append(0)
+        psnr.append(0)
+        lp.append(0)
 
-INPUT_HEIGHT = 128
-INPUT_WIDTH = 128
-N_CHANNELS = 1 
+    # reverse schedule sampling
+    if configs.reverse_scheduled_sampling == 1:
+        mask_input = 1
+    else:
+        mask_input = configs.input_length
 
-# Initializing the train_dict to store clips and input data # 
-train_dict['clips'] = np.zeros(shape=(2, LENGTH, 2), dtype=np.int32)
-train_dict['input_raw_data'] = np.zeros(shape=(SIZE_TRAIN_DATA, N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH), dtype=np.int32)
+    real_input_flag = np.zeros(
+        (configs.batch_size,
+         configs.total_length - mask_input - 1,
+         configs.img_width // configs.patch_size,
+         configs.img_width // configs.patch_size,
+         configs.patch_size ** 2 * configs.img_channel))
 
-for i in range(LENGTH):
-    train_dict['clips'][0,i,0] = i * TOTAL_LENGTH
-    train_dict['clips'][0,i,1] = INPUT_LENGTH
-    train_dict['clips'][1,i,0] = i * TOTAL_LENGTH + INPUT_LENGTH
-    train_dict['clips'][1,i,1] = INPUT_LENGTH
-    for k in range(TOTAL_LENGTH):
-        train_dict['input_raw_data'][i*TOTAL_LENGTH+k] = np.reshape(train_data[i*TOTAL_LENGTH+k], (N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH))
+    if configs.reverse_scheduled_sampling == 1:
+        real_input_flag[:, :configs.input_length - 1, :, :] = 1.0
 
-# Store dimensions in the train_dict, not in train_data
-train_dict['dims'] = [[N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH]] # [[N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH]]
+    while (test_input_handle.no_batch_left() == False):
+        batch_id = batch_id + 1
+        test_ims = test_input_handle.get_batch()
+        test_dat = preprocess.reshape_patch(test_ims, configs.patch_size)
+        test_ims = test_ims[:, :, :, :, :configs.img_channel]
+        img_gen = model.test(test_dat, real_input_flag)
 
-# Print the stored data
-print(train_dict['dims'])
-print(train_dict['clips'].shape)
-print(train_dict['input_raw_data'].shape)
+        img_gen = preprocess.reshape_patch_back(img_gen, configs.patch_size)
+        output_length = configs.total_length - configs.input_length 
+        img_out = img_gen[:, -output_length:]
 
-np.savez('../fingering_train_data.npz', **train_dict)
+        # MSE per frame
+        for i in range(output_length):
+            x = test_ims[:, i + configs.input_length, :, :, :]
+            gx = img_out[:, i, :, :, :]
+            gx = np.maximum(gx, 0)
+            gx = np.minimum(gx, 1)
+            mse = np.square(x - gx).sum()
+            img_mse[i] += mse
+            avg_mse += mse
+            # cal lpips
+            img_x = np.zeros([configs.batch_size, 3, configs.img_width, configs.img_width])
+            if configs.img_channel == 3:
+                img_x[:, 0, :, :] = x[:, :, :, 0]
+                img_x[:, 1, :, :] = x[:, :, :, 1]
+                img_x[:, 2, :, :] = x[:, :, :, 2]
+            else:
+                img_x[:, 0, :, :] = x[:, :, :, 0]
+                img_x[:, 1, :, :] = x[:, :, :, 0]
+                img_x[:, 2, :, :] = x[:, :, :, 0]
+            img_x = torch.FloatTensor(img_x)
+            img_gx = np.zeros([configs.batch_size, 3, configs.img_width, configs.img_width])
+            if configs.img_channel == 3:
+                img_gx[:, 0, :, :] = gx[:, :, :, 0]
+                img_gx[:, 1, :, :] = gx[:, :, :, 1]
+                img_gx[:, 2, :, :] = gx[:, :, :, 2]
+            else:
+                img_gx[:, 0, :, :] = gx[:, :, :, 0]
+                img_gx[:, 1, :, :] = gx[:, :, :, 0]
+                img_gx[:, 2, :, :] = gx[:, :, :, 0]
+            img_gx = torch.FloatTensor(img_gx)
+            lp_loss = loss_fn_alex(img_x, img_gx)
+            lp[i] += torch.mean(lp_loss).item()
 
-# Same for validation and test data...
-LENGTH = (SIZE_TRAIN_VALID_DATA - SIZE_TRAIN_DATA) // TOTAL_LENGTH
-valid_dict['clips'] = np.zeros(shape=(2, LENGTH, 2), dtype=np.int32)
-valid_dict['input_raw_data'] = np.zeros(shape=((SIZE_TRAIN_VALID_DATA - SIZE_TRAIN_DATA), N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH), dtype=np.int32)
+            real_frm = np.uint8(x * 255)
+            pred_frm = np.uint8(gx * 255)
 
-for i in range(LENGTH):
-    valid_dict['clips'][0,i,0] = i * TOTAL_LENGTH
-    valid_dict['clips'][0,i,1] = INPUT_LENGTH
-    valid_dict['clips'][1,i,0] = i * TOTAL_LENGTH + INPUT_LENGTH
-    valid_dict['clips'][1,i,1] = INPUT_LENGTH
-    for k in range(TOTAL_LENGTH):
-        valid_dict['input_raw_data'][i*TOTAL_LENGTH+k] = np.reshape(valid_data[i*TOTAL_LENGTH+k], (N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH))
+            psnr[i] += metrics.batch_psnr(pred_frm, real_frm)
+            for b in range(configs.batch_size):
+                score, _ = compare_ssim(pred_frm[b], real_frm[b], full=True, multichannel=True)
+                ssim[i] += score
 
-# Store dimensions in the train_dict, not in train_data
-valid_dict['dims'] = [[N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH]] # [[N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH]]
+        # save prediction examples
+        if batch_id <= configs.num_save_samples:
+            path = os.path.join(res_path, str(batch_id))
+            os.mkdir(path)
+            for i in range(configs.total_length):
+                name = 'gt' + str(i + 1) + '.png'
+                file_name = os.path.join(path, name)
+                img_gt = np.uint8(test_ims[0, i, :, :, :] * 255)
+                cv2.imwrite(file_name, img_gt)
+            for i in range(output_length):
+                name = 'pd' + str(i + 1 + configs.input_length) + '.png'
+                file_name = os.path.join(path, name)
+                img_pd = img_out[0, i, :, :, :]
+                img_pd = np.maximum(img_pd, 0)
+                img_pd = np.minimum(img_pd, 1)
+                img_pd = np.uint8(img_pd * 255)
+                cv2.imwrite(file_name, img_pd)
+        test_input_handle.next()
 
-# Print the stored data
-print(valid_dict['dims'])
-print(valid_dict['clips'].shape)
-print(valid_dict['input_raw_data'].shape)
+    avg_mse = avg_mse / (batch_id * configs.batch_size)
+    print('mse per seq: ' + str(avg_mse))
+    for i in range(configs.total_length - configs.input_length):
+        print(img_mse[i] / (batch_id * configs.batch_size))
 
-np.savez('../fingering_valid_data.npz', **valid_dict)
+    ssim = np.asarray(ssim, dtype=np.float32) / (configs.batch_size * batch_id)
+    print('ssim per frame: ' + str(np.mean(ssim)))
+    for i in range(configs.total_length - configs.input_length):
+        print(ssim[i])
 
-# Test dict also... 
-LENGTH = (len(frames) - SIZE_TRAIN_VALID_DATA) // TOTAL_LENGTH
-test_dict['clips'] = np.zeros(shape=(2, LENGTH, 2), dtype=np.int32)
-test_dict['input_raw_data'] = np.zeros(shape=(len(frames) - SIZE_TRAIN_VALID_DATA, N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH), dtype=np.int32)
+    psnr = np.asarray(psnr, dtype=np.float32) / batch_id
+    print('psnr per frame: ' + str(np.mean(psnr)))
+    for i in range(configs.total_length - configs.input_length):
+        print(psnr[i])
 
-for i in range(LENGTH):
-    test_dict['clips'][0,i,0] = i * TOTAL_LENGTH
-    test_dict['clips'][0,i,1] = INPUT_LENGTH
-    test_dict['clips'][1,i,0] = i * TOTAL_LENGTH + INPUT_LENGTH
-    test_dict['clips'][1,i,1] = INPUT_LENGTH
-    for k in range(TOTAL_LENGTH):
-        test_dict['input_raw_data'][i*TOTAL_LENGTH+k] = np.reshape(test_data[i*TOTAL_LENGTH+k], (N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH))
-
-# Store dimensions in the train_dict, not in train_data
-test_dict['dims'] = [[N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH]] # [[N_CHANNELS, INPUT_HEIGHT, INPUT_WIDTH]]
-
-# Print the stored data
-print(test_dict['dims'])
-print(test_dict['clips'].shape)
-print(test_dict['input_raw_data'].shape)
-
-np.savez('../fingering_test_data.npz', **test_dict)
-
+    lp = np.asarray(lp, dtype=np.float32) / batch_id
+    print('lpips per frame: ' + str(np.mean(lp)))
+    for i in range(configs.total_length - configs.input_length):
+        print(lp[i])
